@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const form = formidable({ multiples: false, maxFileSize: 10 * 1024 * 1024 });
+    const form = formidable.formidable({ multiples: false, maxFileSize: 10 * 1024 * 1024 });
     const [fields, files] = await form.parse(req);
     const file = Array.isArray(files.image) ? files.image[0] : files.image;
 
