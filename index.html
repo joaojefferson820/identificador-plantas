@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Identificador de Plantas</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f2f7f1;color:#17351f}
+    .wrap{max-width:760px;margin:0 auto;padding:28px 18px 50px}
+    .card{background:#fff;border-radius:24px;padding:28px;box-shadow:0 10px 35px rgba(20,70,35,.10)}
+    .hero{text-align:center;margin-bottom:22px}
+    .icon{font-size:54px}
+    h1{margin:8px 0;font-size:30px}
+    .sub{color:#587060;margin:0}
+    .upload{border:2px dashed #86a88e;border-radius:20px;padding:22px;text-align:center;background:#f8fbf8}
+    input[type=file]{display:none}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;padding:14px 20px;font-size:16px;font-weight:700;cursor:pointer}
+    .choose{background:#e5f1e6;color:#1d5a2b}
+    .identify{width:100%;margin-top:14px;background:#2f7d3d;color:#fff}
+    .identify:disabled{opacity:.55;cursor:not-allowed}
+    .preview{max-width:100%;max-height:330px;border-radius:16px;margin:16px auto 0;display:none}
+    .status{text-align:center;margin:18px 0;color:#496451}
+    .error{background:#fff0f0;color:#9d2525;padding:14px;border-radius:12px;margin-top:16px}
+    .result{margin-top:22px}
+    .result h2{font-size:21px}
+    .item{border:1px solid #dce8de;border-radius:16px;padding:16px;margin:12px 0}
+    .name{font-weight:800;font-size:18px}
+    .common{color:#52705a;margin-top:4px}
+    .confidence{margin-top:10px;font-weight:700}
+    .bar{height:8px;background:#e4ece5;border-radius:8px;overflow:hidden;margin-top:7px}
+    .bar span{display:block;height:100%;background:#4d9858}
+    .small{font-size:13px;color:#708175;text-align:center;margin-top:18px}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="card">
+      <section class="hero">
+        <div class="icon">🌿</div>
+        <h1>Identifique sua planta</h1>
+        <p class="sub">Tire uma foto ou escolha uma imagem para descobrir qual planta é.</p>
+      </section>
+
+      <section class="upload">
+        <label class="btn choose" for="photo">📷 Escolher ou tirar foto</label>
+        <input id="photo" type="file" accept="image/*" capture="environment">
+        <img id="preview" class="preview" alt="Pré-visualização da planta">
+      </section>
+
+      <button id="identify" class="btn identify" disabled>🔎 Identificar planta</button>
+      <div id="status" class="status"></div>
+      <div id="message"></div>
+      <section id="result" class="result"></section>
+      <p class="small">A identificação é uma estimativa baseada na imagem enviada.</p>
+    </div>
+  </main>
+
+<script>
+const photo = document.getElementById('photo');
+const preview = document.getElementById('preview');
+const identify = document.getElementById('identify');
+const status = document.getElementById('status');
+const message = document.getElementById('message');
+const result = document.getElementById('result');
+
+photo.addEventListener('change', () => {
+  message.innerHTML = '';
+  result.innerHTML = '';
+  const file = photo.files[0];
+  if (!file) {
+    identify.disabled = true;
+    preview.style.display = 'none';
+    return;
+  }
+  if (!file.type.startsWith('image/')) {
+    message.innerHTML = '<div class="error">Escolha uma imagem válida.</div>';
+    identify.disabled = true;
+    return;
+  }
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'block';
+  identify.disabled = false;
+});
+
+identify.addEventListener('click', async () => {
+  const file = photo.files[0];
+  if (!file) return;
+
+  identify.disabled = true;
+  status.textContent = '🔎 Analisando sua planta...';
+  message.innerHTML = '';
+  result.innerHTML = '';
+
+  const form = new FormData();
+  form.append('image', file);
+
+  try {
+    const response = await fetch('/api/identify', { method: 'POST', body: form });
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.error || 'Não foi possível identificar a planta.');
+
+    const results = data.results || [];
+    if (!results.length) {
+      result.innerHTML = '<div class="error">Não encontramos uma identificação confiável para esta imagem. Tente outra foto, de preferência mostrando folhas, flores ou frutos com nitidez.</div>';
+      return;
+    }
+
+    result.innerHTML = '<h2>🌱 Possíveis identificações</h2>' + results.slice(0,5).map(item => {
+      const s = item.species || {};
+      const score = Math.round((item.score || 0) * 1000) / 10;
+      const common = (s.commonNames || []).slice(0,3).join(', ');
+      const family = s.family?.scientificNameWithoutAuthor || 'Não informado';
+      return `
+        <article class="item">
+          <div class="name">${escapeHtml(s.scientificNameWithoutAuthor || 'Espécie não informada')}</div>
+          <div class="common">${escapeHtml(common || 'Nome popular não informado')}</div>
+          <div class="common">Família: ${escapeHtml(family)}</div>
+          <div class="confidence">Confiança: ${score}%</div>
+          <div class="bar"><span style="width:${Math.min(score,100)}%"></span></div>
+        </article>`;
+    }).join('');
+  } catch (err) {
+    message.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+  } finally {
+    status.textContent = '';
+    identify.disabled = !photo.files[0];
+  }
+});
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+  }[c]));
+}
+</script>
+</body>
+</html>
